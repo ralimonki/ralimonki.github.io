@@ -124,8 +124,8 @@
             if ($scope.Files) {
               for (let i=0; i<$scope.Files.length; i++) {
                 let src = cv.imread(document.getElementById('imgOriginal'+i));
-                cv.resize(src, src, {width:500, height:500}, cv.INTER_AREA);
-                cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+                cv.resize(src, src, {width:500, height:500}, 0, 0, cv.INTER_AREA);
+                cv.cvtColor(src, src, cv.COLOR_BGR2GRAY, 0);
                 cv.imshow(imgResize, src);
                 // let clahe = new cv.CLAHE(4, {width:8, height:8});
                 // clahe.apply(src, src);
@@ -251,7 +251,7 @@
     <table ng-show="InitFinish" >
       <tr>
         <td colspan="5" style="border:0; text-align:left">
-          <h3>AI骨齡預測 <span style="font-size:large; font-style:italic">v0.2 2021/12/18</span></h3>
+          <h3>AI骨齡預測 <span style="font-size:large; font-style:italic">v0.3 2021/12/22</span></h3>
         </td>
       </tr>
       <tr>
