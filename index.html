@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="utf-8">
+  <head>
+    <title>AI骨齡預測</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+    <link href="bootstrap.min.css" rel="stylesheet">
+    <style>
+      * {
+        font-size: large;
+      }
+      th {
+        border: 0.8px solid lightgray;
+        background-color: mediumblue;
+        color: white;
+        padding: 4px;
+        text-align: center;
+      }
+      td {
+        border: 0.8px solid lightgray;
+        padding: 4px;
+        text-align: center;
+      }
+    </style>
+    <script src="tf.min.js"></script>
+    <script src="tiff.min.js"></script>
+    <script src="opencv.js"></script>
+    <script src="angular.min.js"></script>
+    <script>
+      function prt(c) {
+        console.log(c);
+      }
+
+      var app = angular.module('ngApp', []);
+      app.controller('ngCtrl', function($scope) {
+        $scope.OnImageUpload = function() {
+          if ($scope.Files) {
+            for (let i=0; i<$scope.Files.length; i++) {
+              document.getElementById('imgOriginal'+i) ? document.getElementById('imgOriginal'  +i).remove() : 0;
+              document.getElementById('imgPreview'+i) ? document.getElementById('imgPreview'+i).remove() : 0;
+            }
+          }
+
+          let input = document.getElementById('upload');
+          $scope.Files = [];
+          prt(input.files.length);
+          for (let i=0; i<input.files.length; i++) {
+            $scope.Files.push({'Name':input.files[i].name});
+            $scope.Files[i].Gender = 1;
+            prt(input.files[i].name);
+
+            let src = URL.createObjectURL(input.files[i]);
+
+            let imgOrg = new Image();
+            let imgPre = new Image();
+            imgOrg.src = src;
+            imgPre.src = src;
+            imgOrg.onload = function() {
+              imgOrg.id = 'imgOriginal'+i;
+              imgOrg.style.display = 'none';
+              document.getElementById('Preview'+i).appendChild(imgOrg);
+            }
+            imgPre.onload = function() {
+              imgPre.id = 'imgPreview'+i;
+              imgPre.style.height = $scope.PreviewImageHeight;
+              document.getElementById('Preview'+i).appendChild(imgPre);
+            }
+
+            let xhr = new XMLHttpRequest();
+            xhr.responseType = 'arraybuffer';
+            xhr.open('GET', src);
+            xhr.onload = function (e) {
+              var tiff = new Tiff({buffer: xhr.response}); // 若不是tiff，這行會失敗，不會執行後面的程式
+              var canvasOrg = tiff.toCanvas();
+              var canvasPre = tiff.toCanvas();
+              canvasOrg.id = 'imgOriginal'+i;
+              canvasPre.id = 'imgPreview'+i;
+              canvasOrg.style.display = 'none';
+              canvasPre.style.height = $scope.PreviewImageHeight;
+              document.getElementById('Preview'+i).appendChild(canvasOrg);
+              document.getElementById('Preview'+i).appendChild(canvasPre);
+            };
+            xhr.send();
+          }
+
+          //document.getElementById('img299').src = src;
+          //document.getElementById('img500').src = src;
+          //document.getElementById('img500').style.display = 'initial';
+          $scope.$apply();
+        }
+
+        $scope.SetAllGenders = function(g) {
+          if ($scope.Files) {
+            for (let i=0; i<$scope.Files.length; i++) {
+              $scope.Files[i].Gender = g;
+            }
+          }
+        }
+
+        $scope.PredXception = function() {
+          $scope.ClearFields();
+          tf.tidy(() => {
+            let example = tf.browser.fromPixels(document.getElementById('img299')).expandDims(0);
+            example = example.div(127.5).sub(1); // preprocess: 轉成正負1之間
+            /*
+            prt(model);
+            prt(example.dtype);
+            example.array().then(array => { prt(array); });
+            //example.data().then(data => { prt(data); });
+            prt(example.shape);
+            */
+            let model = $scope.Gender===0 ? $scope.modelX0 : $scope.modelX1;
+            model.predict(example).array().then(array => { 
+              $scope.Result = array[0][0];
+              $scope.$apply();
+              prt(tf.memory());
+            });
+          });
+        };
+
+        $scope.PredEfficientNet = function() {
+          $scope.ClearFields();
+          tf.tidy(() => {
+            if ($scope.Files) {
+              for (let i=0; i<$scope.Files.length; i++) {
+                let src = cv.imread(document.getElementById('imgOriginal'+i));
+                cv.resize(src, src, {width:500, height:500}, cv.INTER_AREA);
+                cv.cvtColor(src, src, cv.COLOR_RGBA2GRAY, 0);
+                cv.imshow(imgResize, src);
+                // let clahe = new cv.CLAHE(4, {width:8, height:8});
+                // clahe.apply(src, src);
+                // cv.imshow(imgResizeClahe, src);
+                //prt(src.data);
+
+                let X1 = tf.browser.fromPixels(document.getElementById('imgResize')).expandDims(0);
+                X1 = X1.add(0.0); // preprocess: 轉成 float
+                prt(X1.shape);
+
+                // let X2 = tf.browser.fromPixels(document.getElementById('imgResizeClahe')).expandDims(0);
+                // X2 = X2.add(0.0); // preprocess: 轉成 float
+
+                $scope.modelB4.predict([X1, tf.tensor([[$scope.Files[i].Gender]])]).array().then(array => {
+                  $scope.ResultX1B4 = array[0][0];
+                  if ($scope.ResultX1B5) { // ensemble
+                    let avg = ($scope.ResultX1B4+$scope.ResultX1B5)/2;
+                    $scope.Files[i].X1Months = avg.toFixed(3);
+                    $scope.Files[i].X1Years = (avg/12).toFixed(2);
+                  }
+                  $scope.$apply();
+                  prt(tf.memory());
+                });
+                $scope.modelB5.predict([X1, tf.tensor([[$scope.Files[i].Gender]])]).array().then(array => {
+                  $scope.ResultX1B5 = array[0][0];
+                  if ($scope.ResultX1B4) { // ensemble
+                    let avg = ($scope.ResultX1B4+$scope.ResultX1B5)/2;
+                    $scope.Files[i].X1Months = avg.toFixed(3);
+                    $scope.Files[i].X1Years = (avg/12).toFixed(2);
+                  }
+                  $scope.$apply();
+                  prt(tf.memory());
+                });
+
+                // $scope.modelB4.predict([X2, tf.tensor([[$scope.Gender]])]).array().then(array => {
+                //   $scope.ResultX2B4 = array[0][0];
+                //   if ($scope.ResultX2B5) { // ensemble
+                //     let avg = ($scope.ResultX2B4+$scope.ResultX2B5)/2;
+                //     $scope.X2Months = avg.toFixed(3);
+                //     $scope.X2Years = (avg/12).toFixed(2);
+                //   }
+                //   $scope.$apply();
+                //   prt(tf.memory());
+                // });
+                // $scope.modelB5.predict([X2, tf.tensor([[$scope.Gender]])]).array().then(array => {
+                //   $scope.ResultX2B5 = array[0][0];
+                //   if ($scope.ResultX2B4) { // ensemble
+                //     let avg = ($scope.ResultX2B4+$scope.ResultX2B5)/2;
+                //     $scope.X2Months = avg.toFixed(3);
+                //     $scope.X2Years = (avg/12).toFixed(2);
+                //   }
+                //   $scope.$apply();
+                //   prt(tf.memory());
+                // });
+              }
+            }
+          });
+        };
+
+        $scope.Copy = function() {
+          if ($scope.Files) {
+            let txt = '';
+            for (let i=0; i<$scope.Files.length; i++) {
+              txt += $scope.Files[i].Name + ' ' + $scope.Files[i].X1Years + ' ' + $scope.Files[i].X1Months + '\n';
+            }
+            let clipboard = document.getElementById("Clipboard");
+            clipboard.value = txt;
+            clipboard.select();
+            document.execCommand("copy");
+          }
+        }
+
+        $scope.ClearFields = function() {
+          //$scope.ResultX1B4 = $scope.ResultX1B5 = $scope.ResultX2B4 = $scope.ResultX2B5 = null;
+          //$scope.X1Months = $scope.X1Years = $scope.X2Months = $scope.X2Years = null;
+          let canvas = document.getElementById('imgResize');
+          canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+          //canvas = document.getElementById('imgResizeClahe');
+          //canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        $scope.Init = async function() {
+          $scope.PreviewImageHeight = '70px';
+
+          // load models
+          $scope.modelB5 = await tf.loadGraphModel('EfficientNetB5Graph/model.json');
+          $scope.modelB5.predict([tf.zeros([1,500,500,3]),tf.tensor([[$scope.Gender]])]).dispose(); // 預熱模型
+
+          $scope.modelB4 = await tf.loadGraphModel('EfficientNetB4Graph/model.json');
+          $scope.modelB4.predict([tf.zeros([1,500,500,3]),tf.tensor([[$scope.Gender]])]).dispose(); // 預熱模型
+
+          //$scope.modelX0 = await tf.loadLayersModel('XceptionFemale/model_depthwise.json');
+          //$scope.modelX0.predict(tf.zeros([1,299,299,3])).dispose(); // 預熱模型
+
+          //$scope.modelX1 = await tf.loadLayersModel('XceptionMale/model_depthwise.json');
+          //$scope.modelX1.predict(tf.zeros([1,299,299,3])).dispose(); // 預熱模型
+
+          prt(tf.getBackend());
+          prt(tf.memory());
+          prt(tf.ENV.features);
+          //prt(tf.ENV.getBool('WEBGL_RENDER_FLOAT32_CAPABLE'));
+          //prt(tf.ENV.getBool('WEBGL_RENDER_FLOAT32_ENABLED'));
+
+          $scope.InitFinish = 1;
+          $scope.$apply();
+        }
+
+        angular.element(document).ready(function () {
+          let input = document.getElementById('upload');
+          input.addEventListener('change', $scope.OnImageUpload);
+        });
+
+        $scope.Init();
+      });
+    </script>
+  </head>
+  <body ng-app="ngApp" ng-controller="ngCtrl" style="padding:8px">
+    <div ng-show="!InitFinish" style="text-align:center; font-size:x-large">
+      <br /><br /><br />
+      網頁載入中... 敬請稍候
+      <br /><br /><br />
+    </div>
+    <table ng-show="InitFinish" >
+      <tr>
+        <td colspan="5" style="border:0; text-align:left">
+          <h3>AI骨齡預測 <span style="font-size:large; font-style:italic">v0.2 2021/12/18</span></h3>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="5" style="border:0">
+          <div style="float:left; margin-right:12px">
+            <label for="upload" class="btn btn-info" ng-click="ClearFields()">請上傳X光圖片(jpg/png)</label>
+            <input type="file" id="upload" accept=".jpg, .jpeg, .png" multiple style="width:0px">
+          </div>
+          <div class="btn-group" style="float:left">
+            <button class="btn btn-info" ng-click="PredEfficientNet()" title="EfficientNet B4 ensembles B5">開始預測</button>
+            <!-- <button class="btn btn-info" ng-click="PredXception()">Xception</button> -->
+          </div>
+          <canvas id="imgResize" style="display:none; vertical-align:bottom"></canvas>
+        </td>
+        <!-- <td>
+          <img id="img299" src="" width="299" height="299" style="display:none" />
+          <img id="img500" src="" width="500" height="500" style="display:none" />
+          <div ng-show="X1Months" title="{{'B4: '+ResultX1B4+', B5: '+ResultX1B5}}">預測結果: 年齡 {{X1Years}} (月齡 {{X1Months}})</div>
+        </td>
+        <td>
+          <div ng-show="X2Months" title="{{'B4: '+ResultX2B4+', B5: '+ResultX2B5}}">預測結果: 年齡 {{X2Years}} (月齡 {{X2Months}})</div>
+          <canvas id="imgResizeClahe" style="vertical-align:bottom"></canvas>
+        </td> -->
+      </tr>
+      <tbody ng-show="Files">
+       <tr>
+          <td style="border:0; height:12px"></td>
+        </tr>
+        <tr>
+          <th rowspan="2">檔名</th>
+          <th rowspan="2">圖片</th>
+          <th rowspan="2">
+            <div>性別</div>
+            <div class="btn-group" title="全選">
+              <button type="button" class="btn btn-light" style="padding:2px 6px; font-size:medium" ng-click="SetAllGenders(1)">男</button>
+              <button type="button" class="btn btn-light" style="padding:2px 6px; font-size:medium" ng-click="SetAllGenders(0)">女</button>
+            </div>
+          </th>
+          <th colspan="2">
+            預測結果
+            <button type="button" class="btn btn-light" style="padding:2px 6px; font-size:medium" ng-click="Copy()">複製</button>
+            <textarea id="Clipboard" style="width:0px; height:0px; opacity:0"></textarea>
+          </th>
+        </tr>
+        <tr>
+          <th>年齡</th>
+          <th>月齡</th>
+        </tr>
+        <tr ng-repeat="f in Files">
+          <td>{{f.Name}}</td>
+          <td id="{{'Preview'+$index}}"></td>
+          <td>
+            <div class="btn-group">
+              <button type="button" class="btn" ng-class="f.Gender==1 ? 'btn-primary' : 'btn-outline-primary'" ng-click="f.Gender=1">男</button>
+              <button type="button" class="btn" ng-class="f.Gender==0 ? 'btn-primary' : 'btn-outline-primary'" ng-click="f.Gender=0">女</button>
+            </div>
+          </td>
+          <td>{{f.X1Years}}</td>
+          <td>{{f.X1Months}}</td>
+        </tr>
+      </tbody>
+    </table>
+  </body>
+</html>
