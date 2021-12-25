@@ -4,14 +4,19 @@
     <title>AI骨齡預測</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="utf-8">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
     <link href="bootstrap.min.css" rel="stylesheet">
     <style>
       * {
         font-size: large;
+        color: white;
+      }
+      body {
+        background-color: #202020;
       }
       th {
         border: 0.8px solid lightgray;
-        background-color: mediumblue;
+        background-color: #233641;
         color: white;
         padding: 4px;
         text-align: center;
@@ -20,6 +25,10 @@
         border: 0.8px solid lightgray;
         padding: 4px;
         text-align: center;
+      }
+      .sbtn {
+        padding: 2px 6px;
+        font-size: medium;
       }
     </style>
     <script src="tf.min.js"></script>
@@ -62,7 +71,7 @@
             }
             imgPre.onload = function() {
               imgPre.id = 'imgPreview'+i;
-              imgPre.style.height = $scope.PreviewImageHeight;
+              imgPre.style.height = $scope.PreviewImageHeight + 'px';
               document.getElementById('Preview'+i).appendChild(imgPre);
             }
 
@@ -76,7 +85,7 @@
               canvasOrg.id = 'imgOriginal'+i;
               canvasPre.id = 'imgPreview'+i;
               canvasOrg.style.display = 'none';
-              canvasPre.style.height = $scope.PreviewImageHeight;
+              canvasPre.style.height = $scope.PreviewImageHeight + 'px';
               document.getElementById('Preview'+i).appendChild(canvasOrg);
               document.getElementById('Preview'+i).appendChild(canvasPre);
             };
@@ -87,6 +96,51 @@
           //document.getElementById('img500').src = src;
           //document.getElementById('img500').style.display = 'initial';
           $scope.$apply();
+        }
+
+        $scope.SetMagnifier = function(size) {
+          for (let i = 0; i < $scope.Files.length; i++) {
+            if (document.getElementById('imgPreview'+i).style.height == $scope.MagnifierImageHeight + 'px') {
+              $scope.Zoom('imgPreview'+i, $scope.MagnifierImageHeight, size);
+            }
+          }
+          $scope.MagnifierImageHeight = size;
+        }
+
+        $scope.OnClickImg = function(idx) {
+          for (let i = 0; i < $scope.Files.length; i++) {
+            if (i != idx && document.getElementById('imgPreview'+i).style.height == $scope.MagnifierImageHeight + 'px') {
+              $scope.Zoom('imgPreview'+i, $scope.MagnifierImageHeight, $scope.PreviewImageHeight);
+            }
+          }
+          if (document.getElementById('imgPreview'+idx).style.height == $scope.PreviewImageHeight + 'px') {
+            $scope.Zoom('imgPreview'+idx, $scope.PreviewImageHeight, $scope.MagnifierImageHeight);
+          } else {
+            $scope.Zoom('imgPreview'+idx, $scope.MagnifierImageHeight, $scope.PreviewImageHeight);
+          }
+        }
+
+        $scope.Zoom = function(id, sSize, eSize) { // 動畫呈現縮放
+          let currSize = sSize;
+          let e = document.getElementById(id);
+          let itv = setInterval(frame, $scope.AnimateCycle);
+          function frame() {
+            if (sSize <= eSize) { // 放大
+              if (currSize >= eSize) {
+                clearInterval(itv);
+              } else {
+                currSize += $scope.AnimateStep;
+                e.style.height = currSize + 'px';
+              }
+            } else { // 縮小
+              if (currSize <= eSize) {
+                clearInterval(itv);
+              } else {
+                currSize -= $scope.AnimateStep;
+                e.style.height = currSize + 'px';
+              }
+            }
+          }
         }
 
         $scope.SetAllGenders = function(g) {
@@ -123,67 +177,92 @@
           tf.tidy(() => {
             if ($scope.Files) {
               for (let i=0; i<$scope.Files.length; i++) {
-                let src = cv.imread(document.getElementById('imgOriginal'+i));
-                cv.resize(src, src, {width:500, height:500}, 0, 0, cv.INTER_AREA);
-                cv.cvtColor(src, src, cv.COLOR_BGR2GRAY, 0);
-                cv.imshow(imgResize, src);
-                // let clahe = new cv.CLAHE(4, {width:8, height:8});
-                // clahe.apply(src, src);
-                // cv.imshow(imgResizeClahe, src);
-                //prt(src.data);
+                if (!document.getElementById('imgOriginal'+i)) {
+                  alert("請等候全部檔案讀取完成，再開始預測");
+                  break;
+                } else {
+                  let src = cv.imread(document.getElementById('imgOriginal'+i));
+                  cv.resize(src, src, {width:500, height:500}, 0, 0, cv.INTER_AREA);
+                  cv.cvtColor(src, src, cv.COLOR_BGR2GRAY, 0);
+                  cv.imshow(imgResize, src);
+                  // let clahe = new cv.CLAHE(4, {width:8, height:8});
+                  // clahe.apply(src, src);
+                  // cv.imshow(imgResizeClahe, src);
+                  //prt(src.data);
 
-                let X1 = tf.browser.fromPixels(document.getElementById('imgResize')).expandDims(0);
-                X1 = X1.add(0.0); // preprocess: 轉成 float
-                prt(X1.shape);
+                  let X1 = tf.browser.fromPixels(document.getElementById('imgResize')).expandDims(0);
+                  X1 = X1.add(0.0); // preprocess: 轉成 float
+                  prt(X1.shape);
 
-                // let X2 = tf.browser.fromPixels(document.getElementById('imgResizeClahe')).expandDims(0);
-                // X2 = X2.add(0.0); // preprocess: 轉成 float
+                  // let X2 = tf.browser.fromPixels(document.getElementById('imgResizeClahe')).expandDims(0);
+                  // X2 = X2.add(0.0); // preprocess: 轉成 float
 
-                $scope.modelB4.predict([X1, tf.tensor([[$scope.Files[i].Gender]])]).array().then(array => {
-                  $scope.ResultX1B4 = array[0][0];
-                  if ($scope.ResultX1B5) { // ensemble
-                    let avg = ($scope.ResultX1B4+$scope.ResultX1B5)/2;
-                    $scope.Files[i].X1Months = avg.toFixed(3);
-                    $scope.Files[i].X1Years = (avg/12).toFixed(2);
+                  $scope.modelB4.predict([X1, tf.tensor([[$scope.Files[i].Gender]])]).array().then(array => {
+                    $scope.ResultX1B4 = array[0][0];
+                    if ($scope.FullMode) {
+                      if ($scope.ResultX1B5) { // ensemble
+                        let avg = ($scope.ResultX1B4+$scope.ResultX1B5)/2;
+                        $scope.Files[i].X1Months = avg.toFixed(3);
+                        $scope.Files[i].X1Years = (avg/12).toFixed(2);
+                      }
+                      $scope.$apply();
+                      prt(tf.memory());
+                    } else {
+                      $scope.Files[i].X1Months = $scope.ResultX1B4.toFixed(3);
+                      $scope.Files[i].X1Years = ($scope.ResultX1B4/12).toFixed(2);
+                      $scope.$apply();
+                      prt(tf.memory());
+                    }
+                  });
+                  if ($scope.FullMode) {
+                    $scope.modelB5.predict([X1, tf.tensor([[$scope.Files[i].Gender]])]).array().then(array => {
+                      $scope.ResultX1B5 = array[0][0];
+                      if ($scope.ResultX1B4) { // ensemble
+                        let avg = ($scope.ResultX1B4+$scope.ResultX1B5)/2;
+                        $scope.Files[i].X1Months = avg.toFixed(3);
+                        $scope.Files[i].X1Years = (avg/12).toFixed(2);
+                      }
+                      $scope.$apply();
+                      prt(tf.memory());
+                    });
                   }
-                  $scope.$apply();
-                  prt(tf.memory());
-                });
-                $scope.modelB5.predict([X1, tf.tensor([[$scope.Files[i].Gender]])]).array().then(array => {
-                  $scope.ResultX1B5 = array[0][0];
-                  if ($scope.ResultX1B4) { // ensemble
-                    let avg = ($scope.ResultX1B4+$scope.ResultX1B5)/2;
-                    $scope.Files[i].X1Months = avg.toFixed(3);
-                    $scope.Files[i].X1Years = (avg/12).toFixed(2);
-                  }
-                  $scope.$apply();
-                  prt(tf.memory());
-                });
 
-                // $scope.modelB4.predict([X2, tf.tensor([[$scope.Gender]])]).array().then(array => {
-                //   $scope.ResultX2B4 = array[0][0];
-                //   if ($scope.ResultX2B5) { // ensemble
-                //     let avg = ($scope.ResultX2B4+$scope.ResultX2B5)/2;
-                //     $scope.X2Months = avg.toFixed(3);
-                //     $scope.X2Years = (avg/12).toFixed(2);
-                //   }
-                //   $scope.$apply();
-                //   prt(tf.memory());
-                // });
-                // $scope.modelB5.predict([X2, tf.tensor([[$scope.Gender]])]).array().then(array => {
-                //   $scope.ResultX2B5 = array[0][0];
-                //   if ($scope.ResultX2B4) { // ensemble
-                //     let avg = ($scope.ResultX2B4+$scope.ResultX2B5)/2;
-                //     $scope.X2Months = avg.toFixed(3);
-                //     $scope.X2Years = (avg/12).toFixed(2);
-                //   }
-                //   $scope.$apply();
-                //   prt(tf.memory());
-                // });
+                  // $scope.modelB4.predict([X2, tf.tensor([[$scope.Gender]])]).array().then(array => {
+                  //   $scope.ResultX2B4 = array[0][0];
+                  //   if ($scope.ResultX2B5) { // ensemble
+                  //     let avg = ($scope.ResultX2B4+$scope.ResultX2B5)/2;
+                  //     $scope.X2Months = avg.toFixed(3);
+                  //     $scope.X2Years = (avg/12).toFixed(2);
+                  //   }
+                  //   $scope.$apply();
+                  //   prt(tf.memory());
+                  // });
+                  // $scope.modelB5.predict([X2, tf.tensor([[$scope.Gender]])]).array().then(array => {
+                  //   $scope.ResultX2B5 = array[0][0];
+                  //   if ($scope.ResultX2B4) { // ensemble
+                  //     let avg = ($scope.ResultX2B4+$scope.ResultX2B5)/2;
+                  //     $scope.X2Months = avg.toFixed(3);
+                  //     $scope.X2Years = (avg/12).toFixed(2);
+                  //   }
+                  //   $scope.$apply();
+                  //   prt(tf.memory());
+                  // });
+                }
               }
             }
           });
         };
+
+        $scope.Export = function() {
+          let csv = "data:text/csv;charset=utf-8,File,Gender,Age,MonthAge\n";
+          if ($scope.Files) {
+            for (let i=0; i<$scope.Files.length; i++) {
+              csv += $scope.Files[i].Name + ',' + ($scope.Files[i].Gender==1 ? 'M' : 'F') + ',' + $scope.Files[i].X1Years + ',' + $scope.Files[i].X1Months + '\n';
+            }
+            var uri = encodeURI(csv);
+            window.open(uri);
+          }
+        }
 
         $scope.Copy = function() {
           if ($scope.Files) {
@@ -208,14 +287,47 @@
         }
 
         $scope.Init = async function() {
-          $scope.PreviewImageHeight = '70px';
+          $scope.FullMode = 1; // 完整模式包含B5，速度較慢
+          let params = new URLSearchParams(window.location.search);
+          if (params.get('fast')) {
+            $scope.FullMode = 0; // 快速模式只使用B4，速度較快
+          }
+
+          $scope.Version = 'v0.4 2021/12/25';
+          $scope.Lang = 'C'; // 中文
+
+          $scope.Dict = { 
+            'Title': {'C': 'AI骨齡預測', 'E': 'Bone Age Prediction' },
+            'Upload': {'C': '請上傳X光圖片', 'E': 'Upload X-Ray Images' },
+            'Predict': {'C': '開始預測', 'E': 'Predict' },
+            'File': {'C': '檔案', 'E': 'File' },
+            'Image': {'C': '圖片', 'E': 'Image' },
+            'S': {'C': '小', 'E': 'S' },
+            'M': {'C': '中', 'E': 'M' },
+            'L': {'C': '大', 'E': 'L' },
+            'SetSize': {'C': '設定點擊圖片的放大尺寸', 'E': 'Set On-Click Image Size' },
+            'Gender': {'C': '性別', 'E': 'Gender' },
+            'Male': {'C': '男', 'E': 'Male' },
+            'Female': {'C': '女', 'E': 'Female' },
+            'SetAll': {'C': '全部設定', 'E': 'Set All' },
+            'Result': {'C': '預測結果', 'E': 'Result' },
+            'Age': {'C': '年齡', 'E': 'Age' },
+            'MonthAge': {'C': '月齡', 'E': 'Month Age' },
+            'Export': {'C': '匯出', 'E': 'CSV' }
+          };
+
+          $scope.PreviewImageHeight = 70;
+          $scope.MagnifierImageHeight = 400;
+          $scope.AnimateStep = 10;
+          $scope.AnimateCycle = 1;
 
           // load models
-          $scope.modelB5 = await tf.loadGraphModel('EfficientNetB5Graph/model.json');
-          $scope.modelB5.predict([tf.zeros([1,500,500,3]),tf.tensor([[$scope.Gender]])]).dispose(); // 預熱模型
-
           $scope.modelB4 = await tf.loadGraphModel('EfficientNetB4Graph/model.json');
           $scope.modelB4.predict([tf.zeros([1,500,500,3]),tf.tensor([[$scope.Gender]])]).dispose(); // 預熱模型
+          if ($scope.FullMode) {
+            $scope.modelB5 = await tf.loadGraphModel('EfficientNetB5Graph/model.json');
+            $scope.modelB5.predict([tf.zeros([1,500,500,3]),tf.tensor([[$scope.Gender]])]).dispose(); // 預熱模型
+          }
 
           //$scope.modelX0 = await tf.loadLayersModel('XceptionFemale/model_depthwise.json');
           //$scope.modelX0.predict(tf.zeros([1,299,299,3])).dispose(); // 預熱模型
@@ -245,26 +357,32 @@
   <body ng-app="ngApp" ng-controller="ngCtrl" style="padding:8px">
     <div ng-show="!InitFinish" style="text-align:center; font-size:x-large">
       <br /><br /><br />
-      網頁載入中... 敬請稍候
+      網頁載入中... 敬請稍候{{FullMode ? ' 5 分鐘' : ''}}<br />
+      Loading... Please wait{{FullMode ? ' for 5 minutes' : ''}}
       <br /><br /><br />
     </div>
-    <table ng-show="InitFinish" >
+    <table ng-show="InitFinish" style="min-width:800px">
       <tr>
         <td colspan="5" style="border:0; text-align:left">
-          <h3>AI骨齡預測 <span style="font-size:large; font-style:italic">v0.3 2021/12/22</span></h3>
-        </td>
-      </tr>
-      <tr>
-        <td colspan="5" style="border:0">
-          <div style="float:left; margin-right:12px">
-            <label for="upload" class="btn btn-info" ng-click="ClearFields()">請上傳X光圖片(jpg/png)</label>
-            <input type="file" id="upload" accept=".jpg, .jpeg, .png" multiple style="width:0px">
+          <div style="float:left">
+            <img src="ba.png" style="vertical-align:text-bottom">
+            <span style="font-size:30px">{{Dict.Title[Lang]}}</span>
+            <span style="font-size:large; font-style:italic">{{Version}}</span>
+            <div class="btn-group" style="margin-left:4px">
+              <button type="button" class="btn sbtn" ng-class="Lang=='C' ? 'btn-light' : 'btn-outline-light'" style="font-size:small" ng-click="Lang='C'">中</button>
+              <button type="button" class="btn sbtn" ng-class="Lang=='E' ? 'btn-light' : 'btn-outline-light'" style="font-size:small" ng-click="Lang='E'">En</button>
+            </div>
           </div>
-          <div class="btn-group" style="float:left">
-            <button class="btn btn-info" ng-click="PredEfficientNet()" title="EfficientNet B4 ensembles B5">開始預測</button>
+          <div class="btn-group" ng-show="Files && Files.length>0" style="float:right">
+            <button class="btn btn-warning" ng-click="PredEfficientNet()">{{Dict.Predict[Lang]}}</button>
             <!-- <button class="btn btn-info" ng-click="PredXception()">Xception</button> -->
           </div>
+          <div style="float:right; margin:0px 12px">
+            <label for="upload" class="btn btn-light" ng-click="ClearFields()">{{Dict.Upload[Lang]}} (jpg/png)</label>
+            <input type="file" id="upload" accept=".jpg, .jpeg, .png" multiple style="width:0px">
+          </div>
           <canvas id="imgResize" style="display:none; vertical-align:bottom"></canvas>
+          <textarea id="Clipboard" style="width:0px; height:0px; opacity:0"></textarea>
         </td>
         <!-- <td>
           <img id="img299" src="" width="299" height="299" style="display:none" />
@@ -281,32 +399,41 @@
           <td style="border:0; height:12px"></td>
         </tr>
         <tr>
-          <th rowspan="2">檔名</th>
-          <th rowspan="2">圖片</th>
+          <th rowspan="2">{{Dict.File[Lang]}}</th>
+          <th rowspan="2" style="width:450px">
+            {{Dict.Image[Lang]}}
+            <div style="float:right; font-size:medium; font-weight:normal" title="{{Dict.SetSize[Lang]}}">
+              🔍
+              <div class="btn-group">
+                <button type="button" class="btn sbtn" ng-class="MagnifierImageHeight==400 ? 'btn-light' : 'btn-outline-light'" ng-click="SetMagnifier(400)">{{Dict.S[Lang]}}</button>
+                <button type="button" class="btn sbtn" ng-class="MagnifierImageHeight==600 ? 'btn-light' : 'btn-outline-light'" ng-click="SetMagnifier(600)">{{Dict.M[Lang]}}</button>
+                <button type="button" class="btn sbtn" ng-class="MagnifierImageHeight==1000 ? 'btn-light' : 'btn-outline-light'" ng-click="SetMagnifier(1000)">{{Dict.L[Lang]}}</button>
+              </div>
+            </div>
+          </th>
           <th rowspan="2">
-            <div>性別</div>
-            <div class="btn-group" title="全選">
-              <button type="button" class="btn btn-light" style="padding:2px 6px; font-size:medium" ng-click="SetAllGenders(1)">男</button>
-              <button type="button" class="btn btn-light" style="padding:2px 6px; font-size:medium" ng-click="SetAllGenders(0)">女</button>
+            <div>{{Dict.Gender[Lang]}}</div>
+            <div class="btn-group" title="{{Dict.SetAll[Lang]}}">
+              <button type="button" class="btn btn-light sbtn" ng-click="SetAllGenders(1)">{{Dict.Male[Lang]}}</button>
+              <button type="button" class="btn btn-light sbtn" ng-click="SetAllGenders(0)">{{Dict.Female[Lang]}}</button>
             </div>
           </th>
           <th colspan="2">
-            預測結果
-            <button type="button" class="btn btn-light" style="padding:2px 6px; font-size:medium" ng-click="Copy()">複製</button>
-            <textarea id="Clipboard" style="width:0px; height:0px; opacity:0"></textarea>
+            {{Dict.Result[Lang]}}
+            <button type="button" class="btn btn-light sbtn" ng-show="Files[0].X1Years" ng-click="Export()">💾 {{Dict.Export[Lang]}}</button>
           </th>
         </tr>
         <tr>
-          <th>年齡</th>
-          <th>月齡</th>
+          <th>{{Dict.Age[Lang]}}</th>
+          <th>{{Dict.MonthAge[Lang]}}</th>
         </tr>
         <tr ng-repeat="f in Files">
           <td>{{f.Name}}</td>
-          <td id="{{'Preview'+$index}}"></td>
+          <td id="{{'Preview'+$index}}" ng-click="OnClickImg($index)"></td>
           <td>
             <div class="btn-group">
-              <button type="button" class="btn" ng-class="f.Gender==1 ? 'btn-primary' : 'btn-outline-primary'" ng-click="f.Gender=1">男</button>
-              <button type="button" class="btn" ng-class="f.Gender==0 ? 'btn-primary' : 'btn-outline-primary'" ng-click="f.Gender=0">女</button>
+              <button type="button" class="btn" ng-class="f.Gender==1 ? 'btn-light' : 'btn-outline-light'" ng-click="f.Gender=1">{{Dict.Male[Lang]}}</button>
+              <button type="button" class="btn" ng-class="f.Gender==0 ? 'btn-light' : 'btn-outline-light'" ng-click="f.Gender=0">{{Dict.Female[Lang]}}</button>
             </div>
           </td>
           <td>{{f.X1Years}}</td>
