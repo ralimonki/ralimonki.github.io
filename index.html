@@ -201,13 +201,13 @@
             if ($scope.FullMode) {
               if ($scope.ResultX1B5) { // ensemble
                 let avg = ($scope.ResultX1B4+$scope.ResultX1B5)/2;
-                $scope.Files[i].X1Months = avg.toFixed(3);
-                $scope.Files[i].X1Years = (avg/12).toFixed(2);
+                $scope.Files[i].X1Months = avg;
+                $scope.Files[i].X1Years = avg/12;
                 $scope.AfterFinish(i);
               }
             } else {
-              $scope.Files[i].X1Months = $scope.ResultX1B4.toFixed(3);
-              $scope.Files[i].X1Years = ($scope.ResultX1B4/12).toFixed(2);
+              $scope.Files[i].X1Months = $scope.ResultX1B4;
+              $scope.Files[i].X1Years = $scope.ResultX1B4/12;
               $scope.AfterFinish(i);
             }
           });
@@ -216,8 +216,8 @@
               $scope.ResultX1B5 = array[0][0];
               if ($scope.ResultX1B4) { // ensemble
                 let avg = ($scope.ResultX1B4+$scope.ResultX1B5)/2;
-                $scope.Files[i].X1Months = avg.toFixed(3);
-                $scope.Files[i].X1Years = (avg/12).toFixed(2);
+                $scope.Files[i].X1Months = avg;
+                $scope.Files[i].X1Years = avg/12;
                 $scope.AfterFinish(i);
               }
             });
@@ -263,6 +263,12 @@
           canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
         }
 
+        $scope.ToFixed = function(f, d) {
+          if (f) {
+            return Number(f).toFixed(d);
+          }
+        }
+
         $scope.Init = async function() {
           $scope.FullMode = 1; // 完整模式包含B5，速度較慢
           let params = new URLSearchParams(window.location.search);
@@ -270,7 +276,7 @@
             $scope.FullMode = 0; // 快速模式只使用B4，速度較快
           }
 
-          $scope.Version = 'v0.6 2022/1/11';
+          $scope.Version = 'v0.7 2022/1/12';
           $scope.Lang = 'C'; // 中文
 
           $scope.Dict = { 
@@ -401,8 +407,8 @@
               <button type="button" class="btn" ng-class="f.Gender==0 ? 'btn-light' : 'btn-outline-light'" ng-click="f.Gender=0">{{Dict.Female[Lang]}}</button>
             </div>
           </td>
-          <td>{{f.X1Years}}</td>
-          <td>{{f.X1Months}}</td>
+          <td>{{ToFixed(f.X1Years,3)}}</td>
+          <td>{{ToFixed(f.X1Months,3)}}</td>
         </tr>
       </tbody>
     </table>
