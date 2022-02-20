@@ -54,6 +54,39 @@
 
       var app = angular.module('ngApp', []);
       app.controller('ngCtrl', function($scope) {
+        $scope.VerifyPassword = async function() {
+          const utf8 = new TextEncoder().encode($scope.Password);
+          let hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          const hashHex = hashArray.map((bytes) => bytes.toString(16).padStart(2, '0')).join('');
+          if (hashHex === 'e5f95b8bc538c727d7f6c37d3aaf2933a6c14212456404bd6e449344215247ea') {
+            $scope.InitStage = 1; // 0: Password, 1: Loading, 2: Ready
+            $scope.$apply();
+            setTimeout(() => { $scope.LoadModel(); }, $scope.DelayMS);
+          } else {
+            alert('密碼錯誤 Wrong password');
+          }
+        }
+
+        $scope.LoadModel = async function() {
+          // load models
+          $scope.modelB4 = await tf.loadGraphModel('EfficientNetB4Graph/model.json');
+          $scope.modelB4.predict([tf.zeros([1,500,500,3]),tf.tensor([[$scope.Gender]])]).dispose(); // 預熱模型
+          if ($scope.FullMode) {
+            $scope.modelB5 = await tf.loadGraphModel('EfficientNetB5Graph/model.json');
+            $scope.modelB5.predict([tf.zeros([1,500,500,3]),tf.tensor([[$scope.Gender]])]).dispose(); // 預熱模型
+          }
+
+          prt(tf.getBackend());
+          prt(tf.memory());
+          prt(tf.ENV.features);
+          //prt(tf.ENV.getBool('WEBGL_RENDER_FLOAT32_CAPABLE'));
+          //prt(tf.ENV.getBool('WEBGL_RENDER_FLOAT32_ENABLED'));
+
+          $scope.InitStage = 2; // 0: Password, 1: Loading, 2: Ready
+          $scope.$apply();
+        }
+
         $scope.OnImageUpload = function() {
           if ($scope.Files) {
             for (let i=0; i<$scope.Files.length; i++) {
@@ -269,14 +302,15 @@
           }
         }
 
-        $scope.Init = async function() {
+        $scope.Init = function() {
+          $scope.InitStage = 0; // 0: Password, 1: Loading, 2: Ready
           $scope.FullMode = 1; // 完整模式包含B5，速度較慢
           let params = new URLSearchParams(window.location.search);
           if (params.get('fast')) {
             $scope.FullMode = 0; // 快速模式只使用B4，速度較快
           }
 
-          $scope.Version = 'v0.7 2022/1/12';
+          $scope.Version = 'v0.8 2022/2/20';
           $scope.Lang = 'C'; // 中文
 
           $scope.Dict = { 
@@ -304,23 +338,6 @@
           $scope.AnimateStep = 10;
           $scope.AnimateCycle = 1;
           $scope.DelayMS = 50;
-
-          // load models
-          $scope.modelB4 = await tf.loadGraphModel('EfficientNetB4Graph/model.json');
-          $scope.modelB4.predict([tf.zeros([1,500,500,3]),tf.tensor([[$scope.Gender]])]).dispose(); // 預熱模型
-          if ($scope.FullMode) {
-            $scope.modelB5 = await tf.loadGraphModel('EfficientNetB5Graph/model.json');
-            $scope.modelB5.predict([tf.zeros([1,500,500,3]),tf.tensor([[$scope.Gender]])]).dispose(); // 預熱模型
-          }
-
-          prt(tf.getBackend());
-          prt(tf.memory());
-          prt(tf.ENV.features);
-          //prt(tf.ENV.getBool('WEBGL_RENDER_FLOAT32_CAPABLE'));
-          //prt(tf.ENV.getBool('WEBGL_RENDER_FLOAT32_ENABLED'));
-
-          $scope.InitFinish = 1;
-          $scope.$apply();
         }
 
         angular.element(document).ready(function () {
@@ -333,14 +350,20 @@
     </script>
   </head>
   <body ng-app="ngApp" ng-controller="ngCtrl" style="padding:8px">
-    <div ng-show="!InitFinish" style="text-align:center; font-size:x-large">
+    <div ng-show="InitStage===0" style="text-align:center; font-size:x-large">
+      <br /><br /><br />
+      <input type="password" ng-model="Password" placeholder="Password" ng-keydown="$event.keyCode===13 && VerifyPassword()" style="color:black">
+      <input type="button" class="btn btn-secondary" value="Enter" ng-click="VerifyPassword()" style="margin-top:-5px">
+      <br /><br /><br />
+    </div>
+    <div ng-show="InitStage===1" style="text-align:center; font-size:x-large">
       <br /><br /><br />
       網頁載入中... 敬請稍候{{FullMode ? ' 5 分鐘' : ''}}<br />
       Loading... Please wait{{FullMode ? ' for 5 minutes' : ''}}<br /><br />
       <div class="loader" style="margin:auto"></div>
       <br /><br /><br />
     </div>
-    <table ng-show="InitFinish" style="min-width:800px">
+    <table ng-show="InitStage===2" style="min-width:800px">
       <tr>
         <td colspan="5" style="border:0; text-align:left">
           <div style="float:left">
